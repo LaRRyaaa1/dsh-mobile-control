@@ -57,6 +57,22 @@ const WANT_BIND = arg('--bind', process.env.DSH_MOBILE_BIND || '');
 const FORCE_DSH = arg('--dsh', process.env.DSH_MOBILE_DSH || '');
 const RESET_PAIR = args.includes('--reset-pair');
 const NO_QR = args.includes('--no-qr');
+const PUBLIC_URL_ARG = arg('--public-url', process.env.DSH_MOBILE_PUBLIC_URL || '');
+let PUBLIC = null;
+if (PUBLIC_URL_ARG) {
+  let u;
+  try { u = new URL(PUBLIC_URL_ARG); } catch { die('--public-url 不是合法 URL。'); }
+  if (!/^https?:$/.test(u.protocol) || u.username || u.password
+      || (u.pathname !== '/' && u.pathname !== '') || u.search || u.hash) {
+    die('--public-url 需要是 http(s)://域名[:端口] 的根地址，例如 https://dsh.example.com');
+  }
+  PUBLIC = Object.freeze({
+    origin: u.origin,
+    host: u.host,
+    hostname: u.hostname,
+    secure: u.protocol === 'https:',
+  });
+}
 
 function log(...a) {
   const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -123,10 +139,14 @@ const LAN = lanAddresses();
 if (!LAN.length) {
   log('未发现私有局域网 IPv4 地址；将只监听 127.0.0.1。');
 }
-const BIND = WANT_BIND || (LAN[0] ? LAN[0].address : '127.0.0.1');
+const BIND = WANT_BIND || (PUBLIC ? '127.0.0.1' : (LAN[0] ? LAN[0].address : '127.0.0.1'));
 const PORT = Number.isFinite(WANT_PORT) && WANT_PORT > 0 ? WANT_PORT : 8787;
 if (BIND === '0.0.0.0') {
   log('警告：--bind 0.0.0.0 会监听所有网卡（包括可能暴露到公网的网卡）。建议绑定具体局域网 IP。');
+}
+if (PUBLIC) {
+  log(`公网模式：${PUBLIC.origin}`);
+  if (!PUBLIC.secure) log('警告：公网地址是 HTTP，流量明文传输；请改用 HTTPS 反代/隧道。');
 }
 
 function stripPort(hostHeader) {
@@ -140,6 +160,7 @@ const ALLOWED_HOSTS = new Set([
   ...LAN.map((x) => x.address.toLowerCase()),
   ...(WANT_BIND && WANT_BIND !== '0.0.0.0' ? [WANT_BIND.toLowerCase()] : []),
   ...(process.env.DSH_MOBILE_HOSTNAME ? [process.env.DSH_MOBILE_HOSTNAME.toLowerCase()] : []),
+  ...(PUBLIC ? [stripPort(PUBLIC.host)] : []),
 ]);
 function isAllowedHost(hostHeader) {
   const h = stripPort(hostHeader);
@@ -463,7 +484,7 @@ function handleUpgrade(req, socket, head) {
     return;
   }
   const origin = req.headers.origin;
-  if (origin && origin !== `http://${req.headers.host}`) {
+  if (!isAllowedOrigin(origin, req)) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     return;
   }
@@ -503,8 +524,14 @@ function handleUpgrade(req, socket, head) {
 
 /* ------------------------------------------------------------------- pair */
 
-function bridgeBase(req) {
+function localBridgeBase(req) {
   return `http://${req.headers.host}`;
+}
+
+function isAllowedOrigin(origin, req) {
+  if (!origin) return true;
+  if (PUBLIC) return origin === PUBLIC.origin;
+  return origin === localBridgeBase(req);
 }
 
 function handlePair(req, res, token) {
@@ -520,7 +547,8 @@ function handlePair(req, res, token) {
   res.writeHead(303, {
     ...COMMON_HEADERS,
     location: '/',
-    'set-cookie': `${BRIDGE_COOKIE}=${cookie}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`,
+    'set-cookie': `${BRIDGE_COOKIE}=${cookie}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`
+      + (PUBLIC && PUBLIC.secure ? '; Secure' : ''),
   });
   res.end();
 }
@@ -536,12 +564,12 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/app.apk') return serveApk(res);
   if (url.pathname === '/healthz') {
-    return sendText(res, 200, JSON.stringify({
-      ok: true, service: 'dsh-mobile-bridge', dsh: dsh.origin, version: 1,
-    }), { 'content-type': 'application/json; charset=utf-8' });
+    const health = { ok: true, service: 'dsh-mobile-bridge', version: 1 };
+    if (!PUBLIC) health.dsh = dsh.origin;
+    return sendText(res, 200, JSON.stringify(health), { 'content-type': 'application/json; charset=utf-8' });
   }
   const origin = req.headers.origin;
-  if (origin && origin !== bridgeBase(req)) {
+  if (!isAllowedOrigin(origin, req)) {
     return sendText(res, 403, 'Forbidden origin.');
   }
   if (String(req.headers['sec-fetch-site'] || '') === 'cross-site') {
@@ -650,11 +678,16 @@ function existingBridge(timeout = 900) {
   server.listen(PORT, BIND, () => {
     const shownPort = PORT === 80 ? '' : `:${PORT}`;
     const ips = BIND === '0.0.0.0' ? LAN.map((x) => x.address) : [BIND];
-    const urls = ips.map((ip) => `http://${ip}${shownPort}/pair/${config.pairToken}`);
+    const urls = PUBLIC
+      ? [`${PUBLIC.origin}/pair/${config.pairToken}`]
+      : ips.map((ip) => `http://${ip}${shownPort}/pair/${config.pairToken}`);
+    const apkBase = PUBLIC
+      ? PUBLIC.origin
+      : `http://${BIND === '0.0.0.0' ? LAN[0]?.address || '127.0.0.1' : BIND}${shownPort}`;
     fs.writeFileSync(PAIR_FILE, urls.join('\r\n') + '\r\n');
     try { fs.chmodSync(PAIR_FILE, 0o600); } catch {}
 
-    const W = 68;
+    const W = Math.max(68, ...urls.map((u) => u.length + 4), `${apkBase}/app.apk`.length + 4);
     const row = (text, indent = 2) => `  │${' '.repeat(indent)}${pad(text, W - indent)}│`;
     const sep = `  ├${'─'.repeat(W)}┤`;
     const lines = [
@@ -664,17 +697,18 @@ function existingBridge(timeout = 900) {
       sep,
       row(`本机 DSH : ${dsh.origin || '未找到（请先打开 DSH 桌面端）'}`),
       row(`监听地址 : ${BIND}:${PORT}`),
+      ...(PUBLIC ? [row(`公网地址 : ${PUBLIC.origin}`)] : []),
       sep,
-      row('手机配对链接（任一，需与手机同一局域网）'),
+      row(PUBLIC ? '手机配对链接（公网，经 TLS 反代/隧道）' : '手机配对链接（任一，需与手机同一局域网）'),
     ];
     for (const u of urls) lines.push(row(u, 4));
     lines.push(
       sep,
       row('安装包：手机浏览器打开下面的地址直接下载'),
-      row(`http://${BIND === '0.0.0.0' ? LAN[0]?.address || '127.0.0.1' : BIND}${shownPort}/app.apk`, 4),
+      row(`${apkBase}/app.apk`, 4),
       sep,
       row('手机 App：点“扫码”扫描下方二维码，或粘贴上面的链接。'),
-      row('浏览器：直接打开上面的 http 链接（不适合日常操作）。'),
+      row('浏览器：直接打开上面的链接（不适合日常操作）。'),
       row('链接只给你自己的设备；泄露后请重启并加 --reset-pair。'),
       row('按 Ctrl+C 停止桥接。'),
       `  └${'─'.repeat(W)}┘`,

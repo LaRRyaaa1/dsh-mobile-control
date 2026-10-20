@@ -151,7 +151,7 @@ public class MainActivity extends Activity {
         box.addView(label);
 
         final EditText input = new EditText(this);
-        input.setHint("http://192.168.x.x:8787/pair/… 或 dshmobile://pair?u=…");
+        input.setHint("https://dsh.example.com/pair/… 或 dshmobile://pair?u=…");
         input.setHintTextColor(0xFF64748B);
         input.setTextColor(C_TEXT);
         input.setTextSize(14);
@@ -221,7 +221,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        TextView note = text("只在同一局域网使用。配对链接等同于密码，泄露后在电脑上重启桥接并加 --reset-pair。",
+        TextView note = text("默认在同一局域网使用；公网请走 HTTPS 反代/隧道。配对链接等同于密码，泄露后在电脑上重启桥接并加 --reset-pair。",
                 12, 0xFF64748B, false);
         note.setLineSpacing(dp(3), 1f);
         note.setPadding(0, dp(28), 0, 0);
