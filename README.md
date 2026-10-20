@@ -204,10 +204,11 @@ adb install -r dsh-mobile.apk
 - 未配对访问返回 `401`，有效配对链接返回 `303` 并下发 Cookie；
 - 通过桥接加载 DSH 首页 `200`，HTML 104,642 字节，含 `__DSH_BOOT__`；
 - WebSocket `/api/remote.mux` 经桥接返回 `101 Switching Protocols`；
-- 公网模式用模拟 `Host`/`Origin` 验证：HTTPS 公网地址配对返回带 `Secure` 的 Cookie，首页 `200`，WebSocket `101`，HTTP 来源的 `Origin` 被 `403` 拒绝；
+- 用 **Cloudflare Quick Tunnel** 实测公网端到端：HTTPS 配对 `303` 并下发带 `Secure` 的 Cookie，首页 `200`，WebSocket `101`，APK `200`；
+- 本地模拟 HTTP 来源的 `Origin` 被 `403` 拒绝；
 - APK 通过 `apksigner` 的 v1/v2/v3 签名校验，package `com.dsh.mobile`，minSdk 23 / targetSdk 33。
 
-**没有用真实域名/Caddy/Cloudflare 做过端到端测试**（当前环境没有域名和公网入口），只验证了桥接侧的 Host/Origin/Cookie/WebSocket 逻辑；真实反代请按“公网访问”一节配置后先用手机浏览器打开 `/healthz` 确认。
+**没有用自有域名/Caddy/Named Tunnel 做过测试**；Quick Tunnel 的 `trycloudflare.com` 地址每次重启都会变，仅适合临时试用。真实反代请按“公网访问”一节配置后先用手机浏览器打开 `/healthz` 确认。
 
 **未在真机/模拟器上运行过**（当前环境没有 adb 设备，也没有可用的模拟器）。第一次装到手机后如果闪退或扫码黑屏，按下面“排查”抓 `adb logcat`。
 
