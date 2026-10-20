@@ -2,6 +2,8 @@
 setlocal
 chcp 65001 >nul
 title DSH Mobile Bridge
+set "DSH_MOBILE_HOME=%~dp0.state"
+if not exist "%DSH_MOBILE_HOME%" mkdir "%DSH_MOBILE_HOME%"
 cd /d "%~dp0bridge"
 
 where node >nul 2>nul
