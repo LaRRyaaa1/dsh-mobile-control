@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output (regenerate with android/build.ps1)
+android/build/
+
+# Local signing material — never publish keystores or their passwords
+.state/
+
+# Signing sidecar produced by apksigner
+*.idsig
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log

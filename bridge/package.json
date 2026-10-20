@@ -1,0 +1,15 @@
+{
+  "name": "dsh-mobile-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Expose the live DeepSeek Harness desktop GUI to a phone on the LAN.",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "start:reset": "node server.mjs --reset-pair"
+  }
+}

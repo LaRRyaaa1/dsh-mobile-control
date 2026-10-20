@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DSH 手机控制</string>
+    <string name="scan_hint">将电脑终端里的二维码放入取景框</string>
+    <string name="cancel">取消</string>
+</resources>
