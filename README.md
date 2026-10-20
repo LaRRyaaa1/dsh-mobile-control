@@ -39,7 +39,23 @@
 4. 连接成功后就是桌面端同一个界面，可以直接发消息、审批命令、看输出。
 
 > 手机和电脑必须在同一个局域网（同一 Wi-Fi，或电脑开了热点给手机连）。
-> 需要跨网络时，优先用下面的 **Tailscale**；如果要在公网服务器/域名上访问，用 **公网反代/隧道** 方案，不要直接把 8787 端口映射出去。
+> 需要跨网络时：临时试用直接双击 **`start-public.bat`**；长期使用优先 **Tailscale**（见下节），或按“公网访问”配置自己的域名。
+
+### 最快跨网络：一键临时公网隧道
+
+不想装 Tailscale、也没有域名时，双击 **`start-public.bat`**。它会自动：
+
+1. 启动 Cloudflare Quick Tunnel，拿到一个临时 `https://<随机>.trycloudflare.com`；
+2. 用这个地址启动桥接（`--bind 127.0.0.1 --public-url ...`），自动带上 `Secure` Cookie；
+3. 在终端打印公网配对链接、安装包地址和二维码。
+
+手机直接扫二维码或粘贴链接即可。要求电脑上有 `cloudflared.exe`（放在本目录 `.state\cloudflared.exe`，或已加入 PATH）；本机已经下载好。
+
+注意：
+
+- 每次启动都会生成**新的临时域名**，旧链接立即失效；以终端当次输出为准。
+- 关闭终端窗口（或按 `Ctrl+C`）会同时停止桥接和隧道。
+- Quick Tunnel 只适合临时使用，速度和稳定性不如 Tailscale；长期使用请配置 Named Tunnel + 自己的域名，或直接用 Tailscale。
 
 ## 不在同一局域网：Tailscale（推荐）
 
@@ -154,7 +170,7 @@ node server.mjs --bind 127.0.0.1 --public-url https://dsh.example.com
                                   :: 公网反代/隧道模式
 ```
 
-- 配对令牌、桥接签名密钥、DSH 地址缓存在 `%USERPROFILE%\.dsh-mobile\`。
+- 配对令牌、桥接签名密钥、DSH 地址缓存在本目录 `.state\`。
 - `pair-url.txt` 里是当前配对链接；`config.json` 含密钥，勿分享。
 - 桥接默认只绑定一个私有局域网 IPv4，不监听 `0.0.0.0`；加了 `--public-url` 且没写 `--bind` 时，默认只绑 `127.0.0.1`，供本机反代/隧道连接。
 - DSH 桌面端重启后端口可能变化，桥接会自动扫描本机监听端口重新发现，不需要改配置。
@@ -248,6 +264,8 @@ adb install -r dsh-mobile.apk
 dsh-mobile/
 ├─ dsh-mobile.apk          已签名安装包
 ├─ start-mobile.bat        电脑端一键启动（局域网/公网反代）
+├─ start-public.bat        一键临时公网（Cloudflare Quick Tunnel）
+├─ start-cloudflare.ps1    start-public.bat 调用的 PowerShell 脚本
 ├─ start-tailscale.bat     跨网络启动（Tailscale）
 ├─ bridge/
 │  ├─ server.mjs           反向代理 + 配对 + Cookie 注入
