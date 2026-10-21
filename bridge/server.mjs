@@ -44,6 +44,7 @@ const STATE_DIR = process.env.DSH_MOBILE_HOME || path.join(HOME, '.dsh-mobile');
 const CONFIG_FILE = path.join(STATE_DIR, 'config.json');
 const PAIR_FILE = path.join(STATE_DIR, 'pair-url.txt');
 const APK_FILE = new URL('../dsh-mobile.apk', import.meta.url);
+const WEB_DIR = new URL('./public/', import.meta.url);
 const BRIDGE_COOKIE = 'dsh_mobile';
 const PAIR_COOKIE_DAYS = 180;
 
@@ -377,7 +378,144 @@ function unauthorized(res) {
 <h1>需要配对</h1><p>这个地址只接受已配对的手机访问。</p>
 <p>请在电脑上运行 <code>dsh-mobile</code> 启动器，用手机扫描它显示的二维码，或直接打开它输出的配对链接。</p>
 <p class="muted">配对链接形如 <code>http://电脑局域网IP:8787/pair/…</code>，每个链接只能由你自己的设备使用。</p>
-<p><a href="/app.apk" style="color:#8ab4f8">下载安卓 App（约 0.3 MB）</a></p>`);
+<p><a href="/m" style="color:#8ab4f8">打开手机网页版 / 配对</a> · <a href="/app.apk" style="color:#8ab4f8">下载安卓 App（约 0.3 MB）</a></p>`);
+}
+
+const MOBILE_MANIFEST = JSON.stringify({
+  name: 'DSH 手机控制',
+  short_name: 'DSH',
+  description: '在手机上控制电脑里的 DeepSeek Harness',
+  start_url: '/m',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#0f1115',
+  theme_color: '#0f1115',
+  icons: [
+    { src: '/m/icon-180.png', sizes: '180x180', type: 'image/png' },
+    { src: '/m/icon-512.png', sizes: '512x512', type: 'image/png' },
+  ],
+}, null, 2);
+
+const MOBILE_HTML = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DSH 手机控制</title>
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DSH">
+<link rel="manifest" href="/m/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/m/icon-180.png">
+<link rel="icon" href="/m/icon-180.png">
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{background:#0f1115;color:#e8eaed;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;line-height:1.55;padding:calc(28px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom))}
+main{max-width:520px;margin:0 auto}
+.logo{width:64px;height:64px;border-radius:16px;background:#1c2027;border:1px solid #2b313b;display:flex;align-items:center;justify-content:center;font:700 26px ui-monospace,SFMono-Regular,Menlo,monospace;color:#66cddc;margin-bottom:18px}
+h1{font-size:27px;line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:#9aa0a6;margin:0 0 26px;font-size:15px}
+.card{background:#161a20;border:1px solid #262c35;border-radius:16px;padding:18px;margin:14px 0}
+.step{display:flex;gap:10px;margin:0 0 14px;font-size:14px;color:#c7cbd1}
+.step b{color:#66cddc;font-weight:700;min-width:18px}
+label{display:block;font-size:13px;color:#9aa0a6;margin:16px 0 7px}
+input{width:100%;background:#0f1115;color:#e8eaed;border:1px solid #303743;border-radius:11px;padding:13px 14px;font-size:16px;outline:none}
+input:focus{border-color:#66cddc}
+button,.primary{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;border-radius:12px;border:1px solid #3a424e;background:#1c2027;color:#e8eaed;font-size:16px;font-weight:600;text-decoration:none;margin-top:12px;padding:0 14px}
+button:active,.primary:active{transform:translateY(1px);opacity:.9}
+.primary{background:#66cddc;border-color:#66cddc;color:#061014}
+.msg{min-height:22px;font-size:13px;color:#ffb4a9;margin:10px 0 0}
+.ok{color:#9be3b8}
+.tip{color:#8b919a;font-size:12.5px;line-height:1.65;margin:20px 2px 0}
+.tip code{background:#1c2027;border-radius:5px;padding:2px 5px;word-break:break-all}
+a{color:#8ab4f8}
+.foot{margin-top:22px;font-size:12.5px;color:#777d86;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<div class="logo">&gt;_</div>
+<h1>DSH 手机控制</h1>
+<p class="sub">在 iPhone 浏览器里使用电脑上的 DeepSeek Harness。任务始终在电脑上执行。</p>
+
+<section id="paired" class="card" hidden>
+  <div class="step"><b>✓</b><span class="ok">这台手机已经配对。</span></div>
+  <a class="primary" href="/">进入 DSH</a>
+  <button id="repair" type="button">换一个配对链接</button>
+</section>
+
+<section id="setup">
+  <div class="card">
+    <div class="step"><b>1</b><span>在电脑上启动 <b>DSH 手机控制</b>，终端会显示二维码。</span></div>
+    <div class="step"><b>2</b><span>用 iPhone 相机扫描二维码，Safari 会自动打开并完成配对。</span></div>
+    <div class="step"><b>3</b><span>回到本页，点“进入 DSH”；随后可添加到主屏幕。</span></div>
+    <label for="link">相机不方便？粘贴电脑上的配对链接</label>
+    <input id="link" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.5:8787/pair/...">
+    <button id="connect" type="button">连接</button>
+    <p id="msg" class="msg"></p>
+  </div>
+  <p class="tip">iPhone 安装到桌面：Safari 底部 <b>分享</b> → <b>添加到主屏幕</b>。之后从桌面图标打开，界面没有地址栏。</p>
+</section>
+
+<p class="foot">只允许已配对的设备访问 · <a href="/app.apk">安卓安装包</a></p>
+</main>
+<script>
+(function () {
+  var setup = document.getElementById('setup');
+  var paired = document.getElementById('paired');
+  var link = document.getElementById('link');
+  var msg = document.getElementById('msg');
+
+  function normalize(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return '';
+    if (s.indexOf('dshmobile://') === 0) {
+      try { s = new URL(s).searchParams.get('u') || ''; } catch (e) { return ''; }
+      if (!s) return '';
+    }
+    var lower = s.toLowerCase();
+    if (lower.indexOf('http://') !== 0 && lower.indexOf('https://') !== 0) {
+      if (s.indexOf('/pair/') < 1) return '';
+      s = 'http://' + s;
+    }
+    try {
+      var u = new URL(s);
+      if (!/^https?:$/.test(u.protocol) || u.pathname.indexOf('/pair/') !== 0) return '';
+      return u.href;
+    } catch (e) { return ''; }
+  }
+
+  function connect() {
+    var u = normalize(link.value);
+    if (!u) { msg.textContent = '链接格式不对，应以 http(s):// 开头并包含 /pair/。'; return; }
+    msg.textContent = '正在连接…';
+    location.href = u;
+  }
+
+  document.getElementById('connect').addEventListener('click', connect);
+  link.addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
+  document.getElementById('repair').addEventListener('click', function () {
+    paired.hidden = true; setup.hidden = false; link.focus();
+  });
+
+  fetch('/m/status', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (x) {
+    if (x && x.paired) { paired.hidden = false; setup.hidden = true; }
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>`;
+
+function serveMobileAsset(res, name, type, cache = 'no-store') {
+  let data;
+  try { data = fs.readFileSync(new URL(name, WEB_DIR)); } catch { return sendText(res, 404, 'Not found'); }
+  res.writeHead(200, { ...COMMON_HEADERS, 'content-type': type, 'content-length': data.length, 'cache-control': cache });
+  res.end(data);
 }
 
 /* ---------------------------------------------------------------- proxying */
@@ -576,6 +714,16 @@ const server = http.createServer((req, res) => {
     return sendText(res, 403, 'Cross-site request blocked.');
   }
 
+  if (url.pathname === '/m' || url.pathname === '/m/') return sendHtml(res, 200, MOBILE_HTML);
+  if (url.pathname === '/m/status') {
+    return sendText(res, 200, JSON.stringify({ paired: isAuthed(req) }), { 'content-type': 'application/json; charset=utf-8' });
+  }
+  if (url.pathname === '/m/manifest.webmanifest') {
+    return sendText(res, 200, MOBILE_MANIFEST, { 'content-type': 'application/manifest+json; charset=utf-8' });
+  }
+  if (url.pathname === '/m/icon-180.png') return serveMobileAsset(res, 'icon-180.png', 'image/png', 'public, max-age=86400');
+  if (url.pathname === '/m/icon-512.png') return serveMobileAsset(res, 'icon-512.png', 'image/png', 'public, max-age=86400');
+
   const m = url.pathname.match(/^\/pair\/([A-Za-z0-9_-]{16,128})$/);
   if (m) return handlePair(req, res, m[1]);
   if (url.pathname === '/pair') return unauthorized(res);
@@ -687,7 +835,8 @@ function existingBridge(timeout = 900) {
     fs.writeFileSync(PAIR_FILE, urls.join('\r\n') + '\r\n');
     try { fs.chmodSync(PAIR_FILE, 0o600); } catch {}
 
-    const W = Math.max(68, ...urls.map((u) => u.length + 4), `${apkBase}/app.apk`.length + 4);
+    const webBase = `${apkBase}/m`;
+    const W = Math.max(68, ...urls.map((u) => u.length + 6), `${apkBase}/app.apk`.length + 6, webBase.length + 6);
     const row = (text, indent = 2) => `  │${' '.repeat(indent)}${pad(text, W - indent)}│`;
     const sep = `  ├${'─'.repeat(W)}┤`;
     const lines = [
@@ -707,8 +856,11 @@ function existingBridge(timeout = 900) {
       row('安装包：手机浏览器打开下面的地址直接下载'),
       row(`${apkBase}/app.apk`, 4),
       sep,
+      row('iPhone / 网页版：Safari 打开下面的地址'),
+      row(webBase, 4),
+      sep,
       row('手机 App：点“扫码”扫描下方二维码，或粘贴上面的链接。'),
-      row('浏览器：直接打开上面的链接（不适合日常操作）。'),
+      row('iPhone：也可用系统相机直接扫二维码，再“添加到主屏幕”。'),
       row('链接只给你自己的设备；泄露后请重启并加 --reset-pair。'),
       row('按 Ctrl+C 停止桥接。'),
       `  └${'─'.repeat(W)}┘`,
@@ -716,7 +868,7 @@ function existingBridge(timeout = 900) {
     );
     console.log(lines.join('\n'));
     if (!NO_QR) {
-      console.log('  DSH 手机 App 配对二维码：\n');
+      console.log('  手机配对二维码（安卓 App / iPhone 相机均可）：\n');
       printQr(urls[0]);
       console.log('');
     }

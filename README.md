@@ -41,13 +41,31 @@
 > 手机和电脑必须在同一个局域网（同一 Wi-Fi，或电脑开了热点给手机连）。
 > 需要跨网络时：临时试用直接双击 **`start-public.bat`**；长期使用优先 **Tailscale**（见下节），或按“公网访问”配置自己的域名。
 
+### 3. iPhone / 网页版（免安装）
+
+不用装 App，Safari 直接打开桥接的网页版入口：
+
+```
+http://<电脑IP>:8787/m          # 同一局域网
+https://<临时域名>.trycloudflare.com/m   # 公网隧道启动后
+```
+
+1. 电脑启动 `start-mobile.bat` 或 `start-public.bat`。
+2. iPhone 用 **相机** 扫终端二维码，Safari 会打开配对链接并自动配对；也可以直接打开上面的 `/m`，粘贴终端里的配对链接。
+3. 回到 `/m`，点 **进入 DSH**。
+4. 想当 App 用：Safari 底部 **分享** → **添加到主屏幕**。之后从桌面图标打开，没有地址栏，`/m` 会识别已配对状态。
+
+网页版加载的仍是桌面端同一个界面，功能和安卓 App 一致。注意 DSH 前端是桌面布局，iPhone 竖屏会比较挤；可横屏使用，或用 Safari 的页面缩放。网页版不包含安卓 App 的字体缩放/横竖屏菜单。
+
+> 二维码直接编码 `https://.../pair/...`，所以 iPhone 系统相机扫了就能打开；安卓 App 也接受这种链接。二维码只给一台设备用，泄露后重启桥接并加 `--reset-pair`。
+
 ### 最快跨网络：一键临时公网隧道
 
 不想装 Tailscale、也没有域名时，双击 **`start-public.bat`**。它会自动：
 
 1. 启动 Cloudflare Quick Tunnel，拿到一个临时 `https://<随机>.trycloudflare.com`；
 2. 用这个地址启动桥接（`--bind 127.0.0.1 --public-url ...`），自动带上 `Secure` Cookie；
-3. 在终端打印公网配对链接、安装包地址和二维码。
+3. 在终端打印公网配对链接、`/m` 网页版地址、安装包地址和二维码。
 
 手机直接扫二维码或粘贴链接即可。要求电脑上有 `cloudflared.exe`（放在本目录 `.state\cloudflared.exe`，或已加入 PATH）；本机已经下载好。
 
@@ -155,6 +173,12 @@ cloudflared tunnel --url http://127.0.0.1:8787
 - 返回键：网页内后退；再按两次退出。
 - 失败页提供“重试”和“重新配对”，不会把错误吞成白屏。
 
+### iPhone / 浏览器
+
+- 打开 `/m`：手机版配对入口，可粘贴配对链接，也可先用 iPhone 相机扫终端二维码。
+- 已配对时显示“进入 DSH”；支持“添加到主屏幕”作为 PWA 打开。
+- 加载的仍是 DSH 桌面 Web GUI，能力与安卓 App 相同；界面不针对手机重排，建议横屏/缩放使用。
+
 ## 电脑端命令
 
 在 `bridge` 目录运行：
@@ -218,15 +242,16 @@ adb install -r dsh-mobile.apk
 已在电脑端实测通过：
 
 - 未配对访问返回 `401`，有效配对链接返回 `303` 并下发 Cookie；
-- 通过桥接加载 DSH 首页 `200`，HTML 104,642 字节，含 `__DSH_BOOT__`；
+- 通过桥接加载 DSH 首页 `200`，HTML 约 104–105 KB，含 `__DSH_BOOT__`；
 - WebSocket `/api/remote.mux` 经桥接返回 `101 Switching Protocols`；
-- 用 **Cloudflare Quick Tunnel** 实测公网端到端：HTTPS 配对 `303` 并下发带 `Secure` 的 Cookie，首页 `200`，WebSocket `101`，APK `200`；
+- 网页版 `/m`、`/m/manifest.webmanifest`、180/512 图标均 `200`；`/m/status` 未配对返回 `{"paired":false}`，配对后返回 `true` 并能进入 DSH；
+- 用 **Cloudflare Quick Tunnel** 实测公网端到端：HTTPS 配对 `303` 并下发带 `Secure` 的 Cookie，`/m` 和首页 `200`，WebSocket `101`，APK `200`；
 - 本地模拟 HTTP 来源的 `Origin` 被 `403` 拒绝；
 - APK 通过 `apksigner` 的 v1/v2/v3 签名校验，package `com.dsh.mobile`，minSdk 23 / targetSdk 33。
 
 **没有用自有域名/Caddy/Named Tunnel 做过测试**；Quick Tunnel 的 `trycloudflare.com` 地址每次重启都会变，仅适合临时试用。真实反代请按“公网访问”一节配置后先用手机浏览器打开 `/healthz` 确认。
 
-**未在真机/模拟器上运行过**（当前环境没有 adb 设备，也没有可用的模拟器）。第一次装到手机后如果闪退或扫码黑屏，按下面“排查”抓 `adb logcat`。
+**未在真机/模拟器上运行过**（当前环境没有 adb 设备，也没有可用的模拟器）。安卓 App 与 iPhone Safari 的 `/m` 页面都只做了 HTTP/HTTPS 与 JS 结构验证，没有在真实手机上点过；第一次装到手机后如果闪退或扫码黑屏，按下面“排查”抓 `adb logcat`。网页版若显示异常，先确认 Safari 版本并尝试横屏；DSH 前端本身不是响应式布局。
 
 ## 排查
 
@@ -269,6 +294,7 @@ dsh-mobile/
 ├─ start-tailscale.bat     跨网络启动（Tailscale）
 ├─ bridge/
 │  ├─ server.mjs           反向代理 + 配对 + Cookie 注入
+│  ├─ public/              /m 网页版图标（PWA）
 │  └─ package.json
 ├─ android/
 │  ├─ build.ps1            无 Gradle 构建脚本

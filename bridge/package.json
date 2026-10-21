@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Expose the live DeepSeek Harness desktop GUI to a phone on the LAN.",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "qrcode-terminal": "^0.12.0"
   },
